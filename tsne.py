@@ -104,7 +104,7 @@ def pca(X=np.array([]), no_dims=50):
     return Y
 
 
-def tsne(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0):
+def func(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0, method='tsne'): # modified: new paras method to indicate whether sym-sne or t-sne
     """
         Runs t-SNE on the dataset in the NxD array X to reduce its
         dimensionality to no_dims dimensions. The syntaxis of the function is
@@ -122,7 +122,7 @@ def tsne(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0):
     # Initialize variables
     X = pca(X, initial_dims).real
     (n, d) = X.shape
-    max_iter = 1000
+    max_iter = 600
     initial_momentum = 0.5
     final_momentum = 0.8
     eta = 500
@@ -145,15 +145,24 @@ def tsne(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0):
         # Compute pairwise affinities
         sum_Y = np.sum(np.square(Y), 1)
         num = -2. * np.dot(Y, Y.T)
-        num = 1. / (1. + np.add(np.add(num, sum_Y).T, sum_Y))
-        num[range(n), range(n)] = 0.
+        if method == 'tsne':
+            num = 1. / (1. + np.add(np.add(num, sum_Y).T, sum_Y)) # t-dist
+        else:
+            num = np.exp(-1 * np.add(np.add(num, sum_Y).T, sum_Y)) # Gaussian-dist
+            
+        num[range(n), range(n)] = 0. # set diagnoal element to 0
         Q = num / np.sum(num)
         Q = np.maximum(Q, 1e-12)
 
+
         # Compute gradient
         PQ = P - Q
-        for i in range(n):
-            dY[i, :] = np.sum(np.tile(PQ[:, i] * num[:, i], (no_dims, 1)).T * (Y[i, :] - Y), 0)
+        if method == 'tsne':
+            for i in range(n):
+                dY[i, :] = np.sum(np.tile(PQ[:, i] * num[:, i], (no_dims, 1)).T * (Y[i, :] - Y), 0)
+        else:
+            for i in range(n):
+                dY[i, :] = np.sum(np.tile(PQ[:, i], (no_dims, 1)).T * (Y[i, :] - Y), 0) # Gaussian gradient
 
         # Perform the update
         if iter < 20:
@@ -185,6 +194,6 @@ if __name__ == "__main__":
     print("Running example on 2,500 MNIST digits...")
     X = np.loadtxt("mnist2500_X.txt")
     labels = np.loadtxt("mnist2500_labels.txt")
-    Y = tsne(X, 2, 50, 20.0)
+    Y = func(X, 2, 50, 20.0, 'sym-sne')
     pylab.scatter(Y[:, 0], Y[:, 1], 20, labels)
     pylab.show()
