@@ -35,15 +35,23 @@ def PCA(X, res_dim):
     return Y, avg_face
 
 
-def predict_PCA(train_data, test_data, n_neighbors):
+def predict_PCA(train_data, test_data, avg_face, train_W, n_neighbors):
     prd_result = list()
+    diff_train = train_data - avg_face
+    diff_train /= np.linalg.norm(diff_train, axis=1)[:, None]
+
     for image in test_data:
-        distance = np.linalg.norm(train_data - image, axis=1)
-        print (distance.shape)
-        neighbors = np.argpartition(distance, -n_neighbors)[-n_neighbors:]# // 9 + 1
-        # n_neighbors = distance.argsort()[-n_neighbors:][::-1]
-        print (neighbors)
-        prd_result.append(np.bincount(neighbors).argmax())
+        diff = image - avg_face
+        diff /= np.linalg.norm(diff)
+
+        img_lowD = np.dot(train_W.T, diff)
+        dist = list()
+        for train_img in diff_train:
+            train_lowD = np.dot(train_W.T, train_img)
+            dist.append(np.linalg.norm(train_lowD - img_lowD))
+        dist = np.array(dist)
+        idx = np.argpartition(dist, n_neighbors)[:n_neighbors]
+        prd_result.append(np.argmax(np.bincount(idx)))
 
     return np.array(prd_result)
 
@@ -64,10 +72,10 @@ def plot_face(axis_x, axis_y, eigen_face, img_name):
     return
 
 
-def read_images(path):
+def read_images(path, scale=(231, 195)):
     dataset = list()
     for image in os.listdir(path):
-        with Image.open(os.path.join(path, image)) as img:
+        with Image.open(os.path.join(path, image)).resize(scale) as img:
             dataset.append(np.array(img).flatten())
     
     # returns a np array with shape (num_imgs)X(num_pixels_per_image)
@@ -94,17 +102,26 @@ if __name__ == "__main__":
 
     print ('Predicting test images')
     test_imgs = read_images(test_path)
-    test_imgs_lowD = np.dot(test_imgs - avg, train_W) # row-based
-    test_imgs_lowD /= np.linalg.norm(test_imgs_lowD, axis=1)[:, None]
-    print (test_imgs_lowD.shape)
-
-    train_imgs_lowD = np.dot(train_imgs - avg, train_W) # row-based
-    train_imgs_lowD /= np.linalg.norm(train_imgs_lowD, axis=1)[:, None]
-    print (train_imgs_lowD.shape)
-    
     test_labels = sorted([i for i in range(1, 16)]*2)
 
-    prd_result = predict_PCA(train_imgs_lowD, test_imgs_lowD, 5)
-    print (prd_result // 9 + 1)
-    # print (len(prd_result[prd_result == test_labels]))
+    # prd_result = predict_PCA(train_imgs, test_imgs, avg, train_W, 3) // 9 +1
+    # print ('Accuracy: ', len(prd_result[prd_result == test_labels]) / 30)
+
+    # task1 & task2 of LDA
+    train_imgs = read_images(train_path, (100, 100))
+    # calculate within_scatter Sw
+    center_set = list()
+    within_scatter = 0
+    for i in range(15):
+        # calculate Sk and sum up all Sks
+        data_i = train_imgs[9 * i : 9 * (i + 1), :]
+        center = np.mean(data_i, axis=0)
+        center_set.append(center)
+
+        for data in data_i:
+            diff = (data - center).reshape((-1, 1)).astype('float32')
+            within_scatter += np.dot(diff, diff.T)
+    print (within_scatter)
+    center_set = np.array(center_set)
+
     
